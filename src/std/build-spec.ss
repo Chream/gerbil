@@ -14,7 +14,7 @@
     "getopt"
     "logger"
     "generic"
-    (gxc: "event" "-e" "(include \"~~lib/_gambit#.scm\")")
+    (gxc: "event" ,@(include-gambit-sharp))
     "coroutine"
     "iter"
     "test"
@@ -35,7 +35,7 @@
     ;; :std/parser
     "parser/rlang"
     "parser/base"
-    (gxc: "parser/stream" "-e" "(include \"~~lib/_gambit#.scm\")")
+    (gxc: "parser/stream" ,@(include-gambit-sharp))
     "parser/lexer"
     (gxc: "parser/defparser" "-cc-options" "--param max-gcse-memory=300000000")
     (gxc: "parser/rx-parser" "-cc-options" "--param max-gcse-memory=300000000")
@@ -71,20 +71,20 @@
     "net/request"
     "net/websocket"
     "net/wamp"
-    (gxc: "net/repl" "-e" "(include \"~~lib/_gambit#.scm\")")
+    (gxc: "net/repl" ,@(include-gambit-sharp))
     ;; std/os
-    (gxc: "os/error" "-e" "(include \"~~lib/_gambit#.scm\")")
-    (gxc: "os/fd" "-e" "(include \"~~lib/_gambit#.scm\")")
-    (gxc: "os/fdio" "-e" "(include \"~~lib/_gambit#.scm\")")
-    (gxc: "os/fcntl" "-e" "(include \"~~lib/_gambit#.scm\")")
-    (gxc: "os/pipe" "-e" "(include \"~~lib/_gambit#.scm\")")
-    (gsc: "os/_socket" "-e" "(include \"~~lib/_gambit#.scm\")")
+    (gxc: "os/error" ,@(include-gambit-sharp))
+    (gxc: "os/fd" ,@(include-gambit-sharp))
+    (gxc: "os/fdio" ,@(include-gambit-sharp))
+    (gxc: "os/fcntl" ,@(include-gambit-sharp))
+    (gxc: "os/pipe" ,@(include-gambit-sharp))
+    (gsc: "os/_socket" ,@(include-gambit-sharp))
     (ssi: "os/_socket")
     "os/socket"
     ,@(cond-expand
         (linux
-         '((gxc: "os/epoll" "-e" "(include \"~~lib/_gambit#.scm\")")
-           (gxc: "os/inotify" "-e" "(include \"~~lib/_gambit#.scm\")")))
+         `((gxc: "os/epoll" ,@(include-gambit-sharp))
+           (gxc: "os/inotify" ,@(include-gambit-sharp))))
         (else '()))
     ;; :std/net/bio
     "net/bio/input"
@@ -113,7 +113,7 @@
         `((gsc: "xml/_libxml"
                 "-cc-options" ,(shell-config "xml2-config" "--cflags")
                 "-ld-options" ,(shell-config "xml2-config" "--libs")
-                "-e" "(include \"~~lib/_gambit#.scm\")")
+                ,@(include-gambit-sharp))
           (ssi: "xml/_libxml")
           "xml/libxml"
           "xml/sxml"
@@ -126,10 +126,9 @@
     (gsc: "crypto/libcrypto"
           "-cc-options" ,(cppflags "")
           "-ld-options" ,(ldflags "-lcrypto")
-          "-e" "(include \"~~lib/_gambit#.scm\")")
+          ,@(include-gambit-sharp))
     (ssi: "crypto/libcrypto")
-    (gxc: "crypto/etc"
-          "-e" "(include \"~~lib/_gambit#.scm\")")
+    (gxc: "crypto/etc" ,@(include-gambit-sharp))
     "crypto/digest"
     "crypto/cipher"
     "crypto/hmac"
@@ -146,12 +145,12 @@
     "misc/string"
     "misc/sync"
     "misc/completion"
-    (gxc:  "misc/ports" "-e" "(include \"~~lib/_gambit#.scm\")")
-    (gxc:  "misc/threads" "-e" "(include \"~~lib/_gambit#.scm\")")
+    (gxc:  "misc/ports" ,@(include-gambit-sharp))
+    (gxc:  "misc/threads" ,@(include-gambit-sharp))
     "misc/process"
     ;; :std/actor
-    (gxc: "actor/message" "-e" "(include \"~~lib/_gambit#.scm\")")
-    (gxc: "actor/xdr"  "-e" "(include \"~~lib/_gambit#.scm\")")
+    (gxc: "actor/message" ,@(include-gambit-sharp))
+    (gxc: "actor/xdr"  ,@(include-gambit-sharp))
     "actor/proto"
     "actor/proto/message"
     "actor/proto/null"
