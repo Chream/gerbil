@@ -262,6 +262,8 @@ package: gerbil
     gerbil-version-string gerbil-system-version-string
     ;; system type information
     gerbil-system system-type
+    ;; voodoo doll
+    gerbil-runtime-smp?
     )
 
   (define-alias transcript-on void)
