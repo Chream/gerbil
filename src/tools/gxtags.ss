@@ -13,6 +13,7 @@
         :std/sort
         :std/text/utf8
         :std/misc/ports
+        :std/srfi/1
         (only-in :std/srfi/1 delete-duplicates reverse!))
 (export main make-tags)
 
@@ -53,11 +54,34 @@
 (def current-tags-path
   (make-parameter #f))
 
+(def (update-tag-files-list (new-tag-file #f))
+  "Updates the main TAG-FILES file.
+   The file contains all the TAGS files for Gerbil scheme programs."
+  (let (tag-files-index-file (path-normalize "~/.gerbil/pkg/TAGS-FILES"))
+    (unless (and new-tag-file (file-exists? tag-files-index-file))
+      ;; Tag-files-list file does not exsist. Create it.
+      (call-with-output-file [path: tag-files-index-file create: #t] identity))
+    (call-with-input-file tag-files-index-file
+      (lambda (in)
+        (let (lines (filter file-exists? (read-all-as-lines in))) ; remove old.
+          (call-with-output-file tag-files-index-file
+            (lambda (out)
+              ;; Write new tag-files list.
+              (for-each (lambda (line)
+                          (write-string line out)
+                          (write-string "\n" out))
+                        lines)
+              (unless (or (not new-tag-file)
+                          (any (cut equal? <> new-tag-file) lines))
+                ;; Write new tag file to list if not present.
+                (write-string (string-append new-tag-file "\n") out)))))))))
+
 (def (make-tags inputs tagfile (append? #f))
   (call-with-output-file [path: tagfile append: append?]
     (lambda (output)
       (parameterize ((current-tags-path (path-normalize tagfile)))
-        (for-each (cut tag-input <> output) inputs)))))
+        (for-each (cut tag-input <> output) inputs)
+        (update-tag-files-list (current-tags-path))))))
 
 (def (file-directory? path)
   (eq? (file-type path) 'directory))
