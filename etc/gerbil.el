@@ -3,10 +3,6 @@
 (require 'scheme)
 (require 'cmuscheme)
 
-(defgroup gerbil-mode nil
-  "Editing Gerbil code"
-  :prefix "gerbil-mode-"
-  :group 'scheme)
 
 ;; Redefine the function scheme-send-region from `cmuscheme' so
 ;; that we can keep track of all text sent to Gambit's stdin.
