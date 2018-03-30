@@ -67,7 +67,7 @@
     (comint-send-string
      (scheme-proc)
      string)
-    (gerbil-message string)))
+    (gerbil-message (string-trim string))))
 
 (defun gerbil-reload-file (fname)
   (let ((string (concat "(reload \"" fname "\")\n")))
@@ -75,7 +75,7 @@
     (comint-send-string
      (scheme-proc)
      string)
-    (gerbil-message string)))
+    (gerbil-message (string-trim string))))
 
 (defun gerbil-import-current-buffer ()
   (interactive)
