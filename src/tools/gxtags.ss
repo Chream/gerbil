@@ -15,7 +15,9 @@
         :std/misc/ports
         :std/srfi/1
         (only-in :std/srfi/1 delete-duplicates reverse!))
-(export main make-tags)
+(export main make-tags
+        try-import-module
+        module-tags)
 
 (def (main . args)
   (def gopt
