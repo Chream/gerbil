@@ -437,11 +437,11 @@
   (when window-system
     (gerbil-pretty-lambdas)))
 
-(global-set-key (kbd "C-x 9") 'restart-scheme)
-
 (defvar gerbil-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map scheme-mode-map)
+    ;; Derived mode does this automatically.
+    ;; (set-keymap-parent map scheme-mode-map)
+    (define-key scheme-mode-map (kbd "C-x 9") 'restart-scheme)
     (define-key map (kbd "C-c C-f") 'gerbil-compile-current-buffer)
     (define-key map (kbd "C-c C-i") 'gerbil-import-current-buffer)
     (define-key map (kbd "C-c C-r") 'gerbil-reload-current-buffer)
