@@ -455,13 +455,15 @@
 ;;;###autoload
 (define-derived-mode gerbil-mode scheme-mode
   "Gerbil" "Major mode for Gerbil."
-  (kill-all-local-variables)
-  (use-local-map gerbil-mode-map)
+  ;; Done automatically.
+  ;; (kill-all-local-variables)
+  ;; (use-local-map gerbil-mode-map)
   (setq mode-name "Gerbil")
   (setq scheme-program-name gerbil-program-name)
   (setq comment-start ";;")
-  (scheme-mode-variables)
-  (gerbil-init))
+  ;; (scheme-mode-variables)
+  (gerbil-init)
+  :group 'gerbil-mode)
 
 
 ;;;###autoload
