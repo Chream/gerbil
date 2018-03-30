@@ -1,8 +1,102 @@
-;;; (C) vyzo@hackzen.org
+;;; gerbil.el --- Mode for Gerbil Scheme.
+
+;; Copyright (c) 2007-2018 Dimitris Vyzovitis <vyzo -at- hackzen.org>
+
+;; Authors: Dimitris Vyzovitis <vyzo -at- hackzen.org>
+;; Keywords: processes, lisp, scheme, gerbil
+
 ;;; gerbil editing mode
 (require 'scheme)
 (require 'cmuscheme)
+(require 's)
+(require 'gambit)
 
+;; Inferior gerbil mode.
+;; Base on gambit inferior mode which is in turn based on
+;; inferior-scheme-mode.
+
+(defvar gerbil-prompt-regexp "^[^>\n]*>+ *")
+(defvar gerbil-repl--last-input-ring (make-ring 10))
+(defvar gerbil--preoutput-handlers '())
+
+(defmacro* logg (str (&rest args) &rest body)
+  `(progn
+     (message "START FUNCION ##############################################")
+     (message (format ,str ,@args))
+     (unless (null ',args)
+       (dolist (arg (list ,@args))
+         (message (format "Type: %S" (type-of arg)))))
+     ,@body))
+
+(defun gerbil--comint-input-sender (string)
+  (logg "INPUT-FILTER  %S" (string)
+        (if (string-equal "\n")
+            nil
+          (ring-insert gerbil-repl--last-input-ring string)
+          (gambit-input-sender string))))
+
+(defun gerbil--comint-output-filter (s)
+  (logg "OUPUT-FILTER : %S" (s)
+        ;; (indent-according-to-mode)
+        ;; (forward-line -1)
+        (if (string-equal "" s)
+            (progn
+              (message "true herfDGSSFGSGGSGSGS")
+              ;; (insert ">")
+              )
+          s)))
+
+(defun gerbil--comint-preoutput-filter (string)
+  (logg "preoutput-filter: %S" (string)
+        (cl-flet ((gerbil--parse-string-sexp (string)
+                                             (cl-let ((function-call-p (string) (s-match "^\(.*\)" string)))
+                                                     (if (function-call-p string)
+                                                         (let* ((fun-name (car (s-match "\\w+" string)))
+                                                                (args-pre (car (s-match "\s.+$" string)))
+                                                                (args (if (null args-pre) args-pre (string-trim args-pre))))
+                                                           (list fun-name args))
+                                                       string)
+                                                     (let* ((ring gerbil-repl--last-input-ring)
+                                                            (last-input (gerbil--parse-string-sexp
+                                                                         (substring-no-properties
+                                                                          (ring-remove ring (ring-length ring))))))
+                                                       (message (replace-regexp-in-string "\n\\'" ""
+                                                                                          (car (s-match ".*\n"  string))))
+                                                       (if (listp last-input)
+                                                           (gerbil--comint-preoutput-handler (car last-input) (cadr last-input) string)
+                                                         string)))))
+          string)))
+
+(defun gerbil--comint-preoutput-handler (last-cmd args string)
+  (let ((handler-fn (cdr (assoc-string last-cmd gerbil--preoutput-handlers))))
+    (if handler-fn
+        (funcall handler-fn last-cmd args string)
+      string)))
+
+(add-to-list 'gerbil--preoutput-handlers
+             (cons "apropos"
+                   (lambda (cmd args string)
+                     (car (s-match gerbil-prompt-regexp string)))))
+
+(defun gerbil--setup-local-variables ()
+  (make-local-variable 'comint-input-sender)
+  (setq comint-input-sender 'gerbil-input-sender))
+
+(defun gerbil--comint-setup ()
+  (ansi-color-for-comint-mode-on)
+  (setq comint-prompt-regexp gerbil-prompt-regexp)
+  (setq comint-prompt-read-only t)
+  ;; (add-hook 'comint-preoutput-filter-functions 'gerbil--comint-preoutput-filter nil t)
+  ;; (add-hook 'comint-preoutput-filter-functions 'xterm-color-filter nil t)
+  (add-hook 'comint-output-filter-functions 'gerbil--comint-output-filter t t)
+  ; (add-hook 'comint-output-filter-functions 'ansi-color-process-output t t)
+  (add-hook 'comint-input-filter-functions 'gerbil--comint-input-filter t t)
+  (add-hook 'gerbil-inferior-mode-hook 'gerbil--setup-local-variables))
+
+;;;###autoload
+(define-derived-mode gerbil-inferior-mode inferior-scheme-mode "gerbil repl"
+  (gerbil--setup-local-variables)
+  (gerbil--comint-setup))
 
 ;; Redefine the function scheme-send-region from `cmuscheme' so
 ;; that we can keep track of all text sent to Gambit's stdin.
