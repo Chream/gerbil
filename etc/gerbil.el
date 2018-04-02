@@ -16,82 +16,34 @@
 ;; inferior-scheme-mode.
 
 (defvar gerbil-prompt-regexp "^[^>\n]*>+ *")
-(defvar gerbil-repl--last-input-ring (make-ring 10))
-(defvar gerbil--preoutput-handlers '())
 
-(defmacro* logg (str (&rest args) &rest body)
-  `(progn
-     (message "START FUNCION ##############################################")
-     (message (format ,str ,@args))
-     (unless (null ',args)
-       (dolist (arg (list ,@args))
-         (message (format "Type: %S" (type-of arg)))))
-     ,@body))
-
-(defun gerbil--comint-input-sender (string)
-  (logg "INPUT-FILTER  %S" (string)
-        (if (string-equal "\n")
-            nil
-          (ring-insert gerbil-repl--last-input-ring string)
-          (gambit-input-sender string))))
-
-(defun gerbil--comint-output-filter (s)
-  (logg "OUPUT-FILTER : %S" (s)
-        ;; (indent-according-to-mode)
-        ;; (forward-line -1)
-        (if (string-equal "" s)
-            (progn
-              (message "true herfDGSSFGSGGSGSGS")
-              ;; (insert ">")
-              )
-          s)))
-
-(defun gerbil--comint-preoutput-filter (string)
-  (logg "preoutput-filter: %S" (string)
-        (cl-flet ((gerbil--parse-string-sexp (string)
-                                             (cl-let ((function-call-p (string) (s-match "^\(.*\)" string)))
-                                                     (if (function-call-p string)
-                                                         (let* ((fun-name (car (s-match "\\w+" string)))
-                                                                (args-pre (car (s-match "\s.+$" string)))
-                                                                (args (if (null args-pre) args-pre (string-trim args-pre))))
-                                                           (list fun-name args))
-                                                       string)
-                                                     (let* ((ring gerbil-repl--last-input-ring)
-                                                            (last-input (gerbil--parse-string-sexp
-                                                                         (substring-no-properties
-                                                                          (ring-remove ring (ring-length ring))))))
-                                                       (message (replace-regexp-in-string "\n\\'" ""
-                                                                                          (car (s-match ".*\n"  string))))
-                                                       (if (listp last-input)
-                                                           (gerbil--comint-preoutput-handler (car last-input) (cadr last-input) string)
-                                                         string)))))
-          string)))
-
-(defun gerbil--comint-preoutput-handler (last-cmd args string)
-  (let ((handler-fn (cdr (assoc-string last-cmd gerbil--preoutput-handlers))))
-    (if handler-fn
-        (funcall handler-fn last-cmd args string)
-      string)))
-
-(add-to-list 'gerbil--preoutput-handlers
-             (cons "apropos"
-                   (lambda (cmd args string)
-                     (car (s-match gerbil-prompt-regexp string)))))
+(defun gerbil--comint-input-sender (proc string)
+  (if (string-empty-p string)
+      ;; Redirect for empty input. Gives a new
+      ;; promt instead of empty line. Should not
+      ;; save the sent string.
+      (comint-send-string proc "(void)\n")
+    (gambit-input-sender proc string)))
 
 (defun gerbil--setup-local-variables ()
   (make-local-variable 'comint-input-sender)
-  (setq comint-input-sender 'gerbil-input-sender))
+  (setq comint-input-sender 'gerbil--comint-input-sender))
 
 (defun gerbil--comint-setup ()
   (ansi-color-for-comint-mode-on)
   (setq comint-prompt-regexp gerbil-prompt-regexp)
   (setq comint-prompt-read-only t)
-  ;; (add-hook 'comint-preoutput-filter-functions 'gerbil--comint-preoutput-filter nil t)
-  ;; (add-hook 'comint-preoutput-filter-functions 'xterm-color-filter nil t)
-  (add-hook 'comint-output-filter-functions 'gerbil--comint-output-filter t t)
-  ; (add-hook 'comint-output-filter-functions 'ansi-color-process-output t t)
-  (add-hook 'comint-input-filter-functions 'gerbil--comint-input-filter t t)
   (add-hook 'gerbil-inferior-mode-hook 'gerbil--setup-local-variables))
+
+(defvar gerbil-inferior-mode-map
+  (let ((map (make-sparse-keymap)))
+    ;; originally on C-c M-r and C-c M-s
+    (define-key map (kbd "M-p") #'comint-previous-matching-input-from-input)
+    (define-key map (kbd "M-n") #'comint-next-matching-input-from-input)
+    ;; originally on M-p and M-n
+    (define-key map (kbd "C-c M-r") #'comint-previous-input)
+    (define-key map (kbd "C-c M-s") #'comint-next-input)
+    map))
 
 ;;;###autoload
 (define-derived-mode gerbil-inferior-mode inferior-scheme-mode "gerbil repl"
