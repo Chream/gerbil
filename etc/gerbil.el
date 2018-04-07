@@ -11,6 +11,14 @@
 (require 's)
 (require 'gambit)
 
+;; Dev utils
+(defun comint-info ()
+  (format  "Comint-info:\n  sender: %S\n  input-filter: %S\n  preoutput-filter: %S\n  output-filter: %S\n"
+           comint-input-sender
+           comint-input-filter-functions
+           comint-preoutput-filter-functions
+           comint-output-filter-functions))
+
 ;; Inferior gerbil mode.
 ;; Base on gambit inferior mode which is in turn based on
 ;; inferior-scheme-mode.
@@ -22,7 +30,7 @@
       ;; Redirect for empty input. Gives a new
       ;; promt instead of empty line. Should not
       ;; save the sent string.
-      (comint-send-string proc "(void)\n")
+      (gambit-input-sender proc "(void)\n")
     (gambit-input-sender proc string)))
 
 (defun gerbil--setup-local-variables ()
