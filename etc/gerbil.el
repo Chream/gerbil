@@ -463,9 +463,9 @@
    '("\\([_#]+\\)"
      (1 font-lock-builtin-face)))
 
-  (gerbil-fontlock-add
-   '("\\([()]\\)"
-     (1 paren-face)))
+  ;; (gerbil-fontlock-add
+  ;;  '("\\([()]\\)"
+  ;;    (1 paren-face)))
   (gerbil-fontlock-add
    '("\\([{}]\\|\\[\\|\\]\\)"
      (1 font-lock-variable-name-face)))
