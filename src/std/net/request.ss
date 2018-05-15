@@ -386,7 +386,7 @@ package: std/net
     (get-text 'UTF-8))))
 
 (def (request-json req)
-  (string->json-object (request-text req)))
+  (string->json (request-text req)))
 
 (def (request-cookies req)
   (let lp ((rest (request-headers req))
