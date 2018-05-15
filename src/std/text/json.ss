@@ -24,9 +24,15 @@ package: std/text
         :std/misc/list
         (only-in :std/srfi/1 reverse! append-map append!)
         (only-in :std/misc/list alist? alist->plist plist->alist))
-(export read-json write-json
+(export json json-symbolic-keys
+        read-json write-json
+        read-json-file write-json-file
+        json-empty? copy-json
+        json-add! json-put! json-delete!
+        json-append! json-merge!
+        alist->json json->alist
         string->json json->string
-        json-symbolic-keys)
+        struct->json class->json hash-table->json object->json)
 
 ;; Needed utils
 
@@ -118,6 +124,10 @@ package: std/text
   (let (ht (read-json-object port #f))
     (make-json ht)))
 
+(def (write-json obj (port (current-output-port)))
+  "Writes OBJ, a `json' object as a json object to character PORT."
+  (write-json-object (json-e obj) port))
+
 (def (read-json-file path/options)
   "Read a json object from file correspong to PATH."
   (call-with-input-file path/options
@@ -129,10 +139,6 @@ package: std/text
   (call-with-output-file path/options
     (lambda (in)
       (read-json in))))
-
-(def (write-json obj (port (current-output-port)))
-  "Writes OBJ, a `json' object as a json object to character PORT."
-  (write-json-object (json-e obj) port))
 
 (def (json-empty? obj)
   "Return #t if `json' object is empty. #f else."
