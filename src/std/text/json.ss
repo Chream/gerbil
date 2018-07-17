@@ -23,16 +23,26 @@ package: std/text
         :std/misc/rtd
         :std/misc/list
         (only-in :std/srfi/1 reverse! append-map append!)
-        (only-in :std/misc/list alist? alist->plist plist->alist))
-(export json json-symbolic-keys
-        read-json write-json
-        read-json-file write-json-file
-        json-empty? copy-json
-        json-add! json-put! json-delete!
-        json-append! json-merge!
-        alist->json json->alist
-        string->json json->string
-        struct->json class->json hash-table->json object->json)
+        (only-in :std/misc/list alist->plist plist->alist)
+
+        :clan/utils/subprocess
+        (only-in :std/misc/ports read-all-as-string)
+
+        (only-in :chream/utils/misc/debug logg))
+
+(export #t ;; json make-json json-e json?
+        ;; json-symbolic-keys
+        ;; read-json write-json
+        ;; read-json-file write-json-file
+        ;; json-empty? copy-json json-equal?
+        ;; json-add! json-put! json-delete!
+        ;; json-append! json-merge!
+        ;; alist->json json->alist
+        ;; string->json-object json-object->string
+        ;; struct->json class->json hash-table->json object->json
+
+        ;; pp pretty-json
+        )
 
 ;; Needed utils
 
@@ -87,7 +97,6 @@ package: std/text
            `(type: ,type ,@(alist->plist (hash->list obj)))))
         (else (error "Not an object!" obj))))
 
-
 ;; Add to :std/misc/hash ?
 
 (def (hash-add! ht key value)
@@ -97,6 +106,34 @@ package: std/text
     (if present?
       (error "Hash key already present!" key present?)
       (hash-put! ht key value))))
+
+(def (alist->hash alist into: (ht (make-hash-table)))
+  (for-each (match <>
+              ([k . v] (hash-add! ht k v))
+              ([] ht))
+            alist))
+
+(def (hash->alist ht)
+  (let (alist [])
+    (hash-for-each (lambda (k v)
+                     (set! alist (cons [k . v] alist)))
+                   ht)))
+
+(def (plist->hash plist into: (ht (make-hash-table)))
+  (let lp ((plist-1 plist))
+    (match plist-1
+      ([k v . rest]
+       (hash-add! ht k v)
+       (lp rest))
+      ([] ht)
+      (else (error "Malformed plist" plist-1)))))
+
+(def (hash->plist ht)
+  (let (plist [])
+    (hash-for-each (lambda (k v)
+                     (set! plist (cons* k v plist)))
+                   ht)
+    plist))
 
 (def (hash-empty? ht)
   (= (hash-length ht) 0))
@@ -109,9 +146,11 @@ package: std/text
 (def json-symbolic-keys
   (make-parameter #t))
 
-;; JSON interface
+;; JSON Types and structures.
 
 (defstruct json (e) constructor: init!)
+(defstruct (json-array json) (refs) constructor: init!) ; unused, but could be useful?
+(defstruct (json-object json) (meta) constructor: init!)
 
 (defmethod {init! json}
   (lambda (self (ht (if (json-symbolic-keys)
@@ -119,14 +158,91 @@ package: std/text
                  (make-hash-table))))
     (json-e-set! self ht)))
 
+(defmethod {init! json-object}
+  (lambda (self)
+    (@next-method self)
+    (let ((meta (make-hash-table)))
+      (json-object-meta-set! self meta))))
+
+(defmethod {:json json}
+  (lambda (self)
+    (json-e self)))
+
+(def (type->json-type obj)
+  (cond
+   ((class-object? obj) (class->json-object obj))
+   ((struct-object? obj) (struct->json-object obj))
+   ((hash-table? obj) (hash->json-object obj))
+   (else obj)))
+
+(def (json-type->type obj)
+  obj)
+
+(def (alist->json-object alist into: (json (make-json-object)))
+  (let lp ((alist-1 alist))
+    (match alist-1
+      ([[key . val] . rest]
+       (json-add! json
+                  (string-e key)
+                  val)
+       (lp rest))
+      ([] json)
+      (alist (error "Not proper alist!" alist)))))
+
+(def (class->json-object obj into: (json (make-json-object)))
+  (check-type class-object? obj)
+  (with (([type: type slots ...] (object->list obj))
+         ((json-object e meta) json))
+    (hash-add! meta class: (type-name type))
+    (let lp ((slot-plist slots))
+      (match slot-plist
+        ([k v . rest]
+         (json-add! json k v)
+         (lp rest))
+        ([] json)))))
+
+(def (struct->json-object obj into: (json (make-json-object)))
+  (check-type struct-object? obj)
+  (with (([type: type slots ...] (object->list obj))
+         ((json-object e meta) json))
+    (hash-add! meta struct: (type-name type))
+    (let lp ((slot-plist slots))
+      (match slot-plist
+        ([k v . rest]
+         (json-add! json k v)
+         (lp rest))
+        ([] json)))))
+
+(def (hash->json-object obj into: (json (make-json-object)))
+  (check-type hash-table? obj)
+  (with (([type: type slots ...] (object->list obj))
+         ((json-object e meta) json))
+    (hash-add! meta table: (type-name type))
+    (let lp ((slot-plist slots))
+      (match slot-plist
+        ([k v . rest]
+         (json-add! json k v)
+         (lp rest))
+        ([] json)))))
+
+(def (object->json-object obj into: (json (make-json-object)))
+  (cond
+   ((hash-table? obj) (hash->json-object obj))
+   ((struct-object? obj) (struct->json-object obj))
+   ((class-object? obj) (class->json-object obj))
+   (else (error "Not an object!" obj))))
+
+
+;; Start of JSON Interface.
+
 (def (read-json (port (current-output-port)))
   "Reads a json object from character PORT."
   (let (ht (read-json-object port #f))
     (make-json ht)))
 
 (def (write-json obj (port (current-output-port)))
-  "Writes OBJ, a `json' object as a json object to character PORT."
-  (write-json-object (json-e obj) port))
+  "Writes OBJ, a `json' object as a json string to character PORT."
+  (write-json-object obj port))
 
 (def (read-json-file path/options)
   "Read a json object from file correspong to PATH."
@@ -142,109 +258,131 @@ package: std/text
 
 (def (json-empty? obj)
   "Return #t if `json' object is empty. #f else."
-  (with ((json e) obj)
-    (hash-empty? e)))
+  (match obj
+    ((json e)
+     (hash-empty? e))))
 
 (def (copy-json obj)
   "Return a deep copy of OBJ, a `json' object."
-  (with ((json e) obj)
-    (make-json (string->json
-                (json->string e)))))
+  (make-json (string->json-object
+              (json-object->string obj))))
+
+(def (json-equal? obj1 obj2)
+  (call/cc
+    (lambda (return)
+      (hash-for-each
+       (lambda (k v1)
+         (let (v2 (json-get obj1 k))
+           (unless (if (json? v1)
+                     (json-equal? v1 v2)
+                     (equal? v1 v2))
+             (return #f))))
+       (json-e obj1))
+      (return #t))))
 
 (def (json-input-fn-generator get-fn set-fn! force-set-fn! constructor-fn)
   (lambda (obj . entry-spec)
-    (with ((json e) obj)
-      (let lp! ((table-1 e)
-                (entry-spec-1 entry-spec))
-        (cond ((null? entry-spec-1)
-               (error "Invalid number of keys. key-length: : " (length entry-spec)))
-              ((= 1 (length entry-spec-1))
-               (set-fn! table-1 (car entry-spec-1) (constructor-fn))
-               obj)
-              ((= 2 (length entry-spec-1))
-               (set-fn! table-1 (car entry-spec-1) (cadr entry-spec-1))
-               obj)
-              (else
-               (let* ((key (car entry-spec-1))
-                      (entry (get-fn table-1 key)))
-                 (cond ((hash-table? entry)
-                        (lp! entry (cdr entry-spec-1)))
-                       (entry
-                        (let (ht-1 (make-json))
-                          (set-fn! ht-1 "__old-value" entry)
-                          (force-set-fn! table-1 key ht-1)
-                          (lp! ht-1 (cdr entry-spec-1))))
-                       (else
-                        (let (ht-2 (make-json))
-                          (set-fn! table-1 key ht-2)
-                          (lp! ht-2 (cdr entry-spec-1))))))))))))
+    (match obj
+      ((json e)
+       (let lp! ((table-1 e)
+                 (entry-spec-1 entry-spec))
+         (cond ((null? entry-spec-1)
+                (error "Invalid number of keys. key-length: : " (length entry-spec)))
+               ((= 1 (length entry-spec-1))
+                (set-fn! table-1
+                         (car entry-spec-1)
+                         (constructor-fn))
+                obj)
+               ((= 2 (length entry-spec-1))
+                (set-fn! table-1
+                         (string-e (car entry-spec-1))
+                         (type->json-type (cadr entry-spec-1)))
+                obj)
+               (else
+                (let* ((key (string-e (car entry-spec-1)))
+                       (entry (get-fn table-1 key)))
+                  (cond ((hash-table? entry)
+                         (lp! entry (cdr entry-spec-1)))
+                        (entry
+                         (let (ht-1 (make-json))
+                           (set-fn! ht-1 "__old-value" entry)
+                           (force-set-fn! table-1 key ht-1)
+                           (lp! ht-1 (cdr entry-spec-1))))
+                        (else
+                         (let (ht-2 (make-json))
+                           (set-fn! table-1 key ht-2)
+                           (lp! ht-2 (cdr entry-spec-1)))))))))))
+    (void)))
 
 (def json-add! (json-input-fn-generator hash-get hash-add! hash-put! make-json))
 (def json-put! (json-input-fn-generator hash-get hash-put! hash-put! make-json))
 
 (def (json-delete! obj . entry-spec)
-  (with ((json e) obj)
-    (let lp! ((ht-1 e)
-              (entry-spec-1 entry-spec))
-      (cond ((null? entry-spec-1)
-             (error "Illegal number of arguments Must be odd. length: "
-               (length entry-spec-1)))
-            ((= 1 (length entry-spec-1))
-             (let* ((key (car entry-spec-1))
-                    (present? (hash-get ht-1 key)))
-               (if present?
-                 (begin
-                   (hash-remove! ht-1 key)
-                   (values present? #t))
-                 (values #f #f))))
-            (else
-             (let* ((key (car entry-spec-1))
-                    (entry (hash-get ht-1 key)))
-               (if (hash-table? entry)
-                 (lp! entry (cdr entry-spec-1))
-                 (error "json-delete: key not present!" (car entry-spec-1)))))))))
+  (match obj
+    ((json e)
+     (let lp! ((ht-1 e)
+               (entry-spec-1 entry-spec))
+       (cond ((null? entry-spec-1)
+              (error "Illegal number of arguments Must be odd. length: "
+                (length entry-spec-1)))
+             ((= 1 (length entry-spec-1))
+              (let* ((key (car entry-spec-1))
+                     (present? (hash-get ht-1 key)))
+                (if present?
+                  (begin
+                    (hash-remove! ht-1 key)
+                    (values present? #t))
+                  (values #f #f))))
+             (else
+              (let* ((key (car entry-spec-1))
+                     (entry (hash-get ht-1 key)))
+                (if (hash-table? entry)
+                  (lp! entry (cdr entry-spec-1))
+                  (error "json-delete: key not present!" (car entry-spec-1))))))))))
 
 (def (json-get obj . entry-spec)
-  (with ((json e) obj)
-    (let lp ((ht-1 e)
-             (entry-spec-1 entry-spec))
-      (cond ((null? entry-spec)
-             (error "illegal arguments."))
-            ((= 1 (length entry-spec-1))
-             (hash-get ht-1 (car entry-spec-1)))
-            (else
-             (let* ((key (car entry-spec-1))
-                    (entry (hash-get ht-1 (car entry-spec-1))))
-               (if (hash-table? entry)
-                 (lp entry (cdr entry-spec-1))
-                 #f)))))))
+  (match obj
+    ((json e)
+     (let lp ((ht-1 e)
+              (entry-spec-1 entry-spec))
+       (cond ((null? entry-spec)
+              (error "illegal arguments."))
+             ((= 1 (length entry-spec-1))
+              (hash-get ht-1 (car entry-spec-1)))
+             (else
+              (let* ((key (car entry-spec-1))
+                     (entry (hash-get ht-1 (car entry-spec-1))))
+                (if (hash-table? entry)
+                  (lp entry (cdr entry-spec-1))
+                  #f))))))))
 
 (def (json-append! obj . entry-spec)
   "Appends the last element of entry-spec, a LIST, to
    the corresping `json' object. Raises an error if
    the present value is not a list."
-  (with ((json e) obj)
-    (let lp! ((ht-1 e)
-              (entry-spec-1 entry-spec))
-      (let (len (length entry-spec-1))
-        (cond ((null? entry-spec)
-               (error "JSON-APPEND: illegal arguments." len))
-              ((= 1 len)
-               (error "JSON-APPEND: illegal arguments" len))
-              ((= 2 len)
-               (let* ((key (car entry-spec-1))
-                      (new-list (cadr entry-spec-1))
-                      (old-list (or (hash-get ht-1 key) []))
-                      (app-list (append! new-list old-list)))
-                 (check-type list? old-list)
-                 (check-type list? new-list)
-                 (json-put! ht-1 key app-list)))
-              (else
-               (let* ((key (car entry-spec-1))
-                      (entry (json-get ht-1 key)))
-                 (if (hash-table? entry)
-                   (lp! entry (cdr entry-spec-1))
-                   (error "json-append!: key not present!" (car entry-spec-1))))))))))
+  (match obj
+    ((json e)
+     (let lp! ((ht-1 e)
+               (entry-spec-1 entry-spec))
+       (let (len (length entry-spec-1))
+         (cond ((null? entry-spec)
+                (error "JSON-APPEND: illegal arguments." len))
+               ((= 1 len)
+                (error "JSON-APPEND: illegal arguments" len))
+               ((= 2 len)
+                (let* ((key (car entry-spec-1))
+                       (new-list (cadr entry-spec-1))
+                       (old-list (or (hash-get ht-1 key) []))
+                       (app-list (append! new-list old-list)))
+                  (check-type list? old-list)
+                  (check-type list? new-list)
+                  (json-put! ht-1 key app-list)))
+               (else
+                (let* ((key (car entry-spec-1))
+                       (entry (json-get ht-1 key)))
+                  (if (hash-table? entry)
+                    (lp! entry (cdr entry-spec-1))
+                    (error "json-append!: key not present!" (car entry-spec-1)))))))))))
 
 (def (json-merge! obj1 obj2)
   "Merges two `json' objects into OBJ1. Will append
@@ -264,48 +402,15 @@ package: std/text
              (else (json-put! e1 k v))))
      e2)))
 
-;; Converters
+;; Converters.
 
-(def (json<- obj include-meta: (include-meta? #f))
-  "This method convert scheme objects to json compatible objects."
-  (cond
-   ((method-ref "hey" ':json)
-    ;; As `call method' does not signal a specific error we cant catch
-    ;; the specific error. ie need to check for a method manually.
-    {:json obj})
-   ((json?   obj)        obj)
-   ((number? obj)        obj)
-   ((object? obj)        (object->json obj include-meta: include-meta?))
-   ((alist?  obj)        (alist->json obj include-meta: include-meta?))
-   ((string? obj)        (try (string->json obj) (catch (e) obj)))
-   ((list?   obj)        (map json<- obj))
-   ((vector? obj)        (list->vector (map json<- (vector->list obj))))
-   (else (error "Can not convert to JSON object" obj))))
+(def (string->json-object str)
+  (read-json (open-input-string str)))
 
-(def (string-e key)
-  "Ensures json key is of correct type."
-  (cond
-   ((string? key) key)
-   ((symbol? key)
-    (symbol->string key))
-   ((keyword? key)
-    (keyword->string key))
-   (else
-    (error "Illegal hash key; must be symbol, keyword or string" key))))
-
-(def (alist->json alist include-meta: (include-meta? #f) into: (json (make-json)))
-  (check-type alist? alist)
-  (when include-meta?
-    (json-add! json __alist: "null"))
-  (let lp ((alist-1 alist))
-    (match alist-1
-      ([[key . val] . rest]
-       (json-add! json
-                  (string-e key)
-                  (json<- val))
-       (lp rest))
-      ([] json)
-      (alist (error "Not proper alist!" alist)))))
+(def (json-object->string json)
+  (let ((port (open-output-string)))
+    (write-json json port)
+    (get-output-string port)))
 
 (def (json->alist obj)
   (match obj
@@ -323,50 +428,7 @@ package: std/text
         e)
        alist))))
 
-(def (string->json str)
-  (read-json (open-input-string str)))
-
-(def (json->string obj)
-  (let ((port (open-output-string)))
-    (write-json obj port)
-    (get-output-string port)))
-
-(def (object->json obj include-meta: (include-meta? #f) into: (json (make-json)))
-  (check-type object? obj)
-  (cond
-   ((hash-table? obj) (hash-table->json obj))
-   ((struct-object? obj) (struct->json obj))
-   ((class-object? obj) (class->json obj))
-   (else (error "Not an object!" obj))))
-
-(def (class->json obj include-meta: (include-meta? #f) into: (json (make-json)))
-  (check-type class-object? obj)
-  (with ([type: type slots ...] (object->list obj))
-    (when include-meta?
-      (json-add! json __class: (type-name type)))
-    (alist->json (plist->alist slots) include-meta: include-meta? into: json))
-  json)
-
-(def (struct->json obj include-meta: (include-meta? #f) into: (json (make-json)))
-  (check-type struct-object? obj)
-  (with ([type: type slots ...] (object->list obj))
-    (when include-meta?
-      (json-add! json __struct: (type-name type)))
-    (alist->json (plist->alist slots) include-meta: include-meta? into: json))
-  json)
-
-(def (hash-table->json obj include-meta: (include-meta? #f) into: (json (make-json)))
-  (check-type hash-table? obj)
-  (with ([type: type slots ...] (object->list obj))
-    (when include-meta?
-      (json-add! json __table: (type-name type)))
-    (alist->json (plist->alist slots) include-meta: include-meta? into: json))
-  json)
-
-
-;;
-
-;;; implementation
+;;; Low level implementation
 (def (raise-invalid-token port char)
   (if (eof-object? char)
     (raise-io-error 'read-json "Incomplete JSON object; EOF reached" port)
@@ -595,8 +657,6 @@ package: std/text
     (write-json-string (symbol->string obj) port))
    ((keyword? obj)
     (write-json-string (keyword->string obj) port))
-   ((alist? obj)
-    (write-json-alist obj port))
    ((list? obj)
     (write-json-list obj port))
    ((vector? obj)
@@ -674,7 +734,7 @@ package: std/text
 
 (def (write-json-hash obj port)
   (let (lst (hash->list obj))
-    (write-json-object lst port)))
+    (write-json-alist lst port)))
 
 (def (write-json-string obj port)
   (def escape
@@ -718,3 +778,28 @@ package: std/text
   (write-char #\" port)
   (write-str obj port)
   (write-char #\" port))
+
+(def (pretty-json obj)
+  (filter-with-process
+   ["jq" "-M" "."]
+   (lambda (port) (write-json obj port))
+   read-all-as-string))
+
+(def (pretty-print-json obj (port (current-output-port)))
+  (display (pretty-json obj) port)
+  (newline port))
+
+(defalias pp pretty-print-json)
+
+;; Utils
+
+(def (string-e key)
+  "Ensures json key is of correct type."
+  (cond
+   ((string? key) key)
+   ((symbol? key)
+    (symbol->string key))
+   ((keyword? key)
+    (keyword->string key))
+   (else
+    (error "Illegal hash key; must be symbol, keyword or string" key))))
